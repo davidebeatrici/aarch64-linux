@@ -106,6 +106,7 @@ static int hi3660_mbox_check_state(struct mbox_chan *chan)
 	/* Ensure channel is released */
 	writel(0xffffffff, base + MBOX_IMASK_REG);
 	writel(BIT(mchan->ack_irq), base + MBOX_SRC_REG);
+
 	return 0;
 }
 
@@ -156,25 +157,6 @@ static int hi3660_mbox_acquire_channel(struct mbox_chan *chan)
 	return retry ? 0 : -ETIMEDOUT;
 }
 
-static int hi3660_mbox_startup(struct mbox_chan *chan)
-{
-	int ret;
-
-	ret = hi3660_mbox_check_state(chan);
-	if (ret)
-		return ret;
-
-	ret = hi3660_mbox_unlock(chan);
-	if (ret)
-		return ret;
-
-	ret = hi3660_mbox_acquire_channel(chan);
-	if (ret)
-		return ret;
-
-	return 0;
-}
-
 static int hi3660_mbox_send_data(struct mbox_chan *chan, void *msg)
 {
 	unsigned long ch = (unsigned long)chan->con_priv;
@@ -183,10 +165,19 @@ static int hi3660_mbox_send_data(struct mbox_chan *chan, void *msg)
 	void __iomem *base = MBOX_BASE(mbox, ch);
 	u32 *buf = msg;
 	unsigned int i;
+	int ret;
 
-	/* Ensure channel is released */
-	writel_relaxed(0xffffffff, base + MBOX_IMASK_REG);
-	writel_relaxed(BIT(mchan->ack_irq), base + MBOX_SRC_REG);
+	ret = hi3660_mbox_unlock(chan);
+	if (ret)
+		return ret;
+
+	ret = hi3660_mbox_check_state(chan);
+	if (ret)
+		return ret;
+
+	ret = hi3660_mbox_acquire_channel(chan);
+	if (ret)
+		return ret;
 
 	/* Clear mask for destination interrupt */
 	writel_relaxed(~BIT(mchan->dst_irq), base + MBOX_IMASK_REG);
@@ -207,7 +198,6 @@ static int hi3660_mbox_send_data(struct mbox_chan *chan, void *msg)
 }
 
 static struct mbox_chan_ops hi3660_mbox_ops = {
-	.startup	= hi3660_mbox_startup,
 	.send_data	= hi3660_mbox_send_data,
 };
 
